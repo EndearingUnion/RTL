@@ -1,0 +1,83 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity FSM is 
+  port (
+          reset       : in      std_logic;
+          clk         : in      std_logic;
+          x           : in      std_logic;
+          y           : out     std_logic
+        );
+end FSM;
+
+architecture behavior of FSM is
+  type statetype is (state_reset, state_clr, state_pass_x0, state_add_1, state_add_2, state_add_3, state_pass_x1_1, state_pass_x1_2, state_and, state_xor);
+  signal state, next_state: statetype := state_reset;
+
+  begin
+  
+  process (state, x, reset)
+      variable C : std_logic := '0';
+      variable ready : std_logic := '0';
+      variable start : std_logic := '1';
+     
+      case state is
+      when state_reset =>
+        ready <= '1';
+        start <= '1';
+        if reset = '1' then
+              next_state <= state_clr;
+        else 
+              next_state <= state_reset;
+        end if;
+      when state_clr =>
+         alu_c <= '0';
+         next_state <= state_pass_x0;
+      when state_pass_x0 =>
+          alu_y = alu_x0;
+          next_state <= state_add_1;
+      when state_add_1 =>
+          alu_y = alu_x0 + alu_x1 + alu_c;
+          next_state <= state_add_2;
+      when state_add_2 =>
+          alu_y = alu_x0 + alu_x1 + alu_c;
+          next_state <= state_pass_x1;
+      when state_pass_x1_1 =>
+          alu_y => alu_x1
+          if alu_c = '1' then
+              next_state <= state_xor;
+          else
+              next_state <= state_and;
+          end if;
+      when state_add => 
+          alu_y = alu_x0 and alu_x1;
+          next_state <= pass_x1_2;
+      when state_x1_2 =>
+          alu_y = alu_x;
+           if y > '15' then
+              next_state <= state_add;
+            else
+               next_state <= state_xor;
+           end if;
+       when state_xor =>
+            alu_y = alu_x0 xor alu_x1;
+            next_state <= state_add;
+       when state_add_3 =>
+          alu_y = alu_x0 + alu_x1 + alu_c;
+          next_state <= state_reset;
+          
+        end case;
+        
+end process;
+      
+          
+          
+            
+            
+        
+        
+        
+        
+        
+
+ 
