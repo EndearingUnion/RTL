@@ -1,0 +1,386 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+
+entity robot is
+	port (  clk             : in    std_logic;
+		reset           : in    std_logic;
+
+		sensor_l_in     : in    std_logic;
+		sensor_m_in     : in    std_logic;
+		sensor_r_in     : in    std_logic;
+
+		motor_l_pwm     : out   std_logic:= '1';
+		motor_r_pwm     : out   std_logic:= '1'
+	);
+end entity robot;
+
+--portmap begin
+architecture final of robot is
+	signal ib_c_r,ib_c_m, ib_c_l, c_mc_l, c_mc_r, reset_r, reset_l, reset_timebase : std_logic;
+	signal c_tb									 :std_logic_vector(19 downto 0);
+	
+	component inputbuffer is
+    port(
+	    clk                 :in std_logic;
+        sensor_l_in         :in std_logic;
+        sensor_m_in         :in std_logic; 
+        sensor_r_in         :in std_logic;
+
+        sensor_l_out        :out std_logic;
+        sensor_m_out        :out std_logic;
+        sensor_r_out        :out std_logic
+
+    );
+	end component inputbuffer;
+
+	component controller is 
+	port (  clk 		: in std_logic;
+		reset		: in std_logic;
+		sensor_l_out	: in std_logic;
+		sensor_m_out	: in std_logic;
+		sensor_r_out 	: in std_logic;
+		count_in	: in std_logic_vector (19 downto 0);
+		direction_r	: out std_logic;
+		direction_l 	: out std_logic;
+		reset_r 	: out std_logic;
+		reset_l		: out std_logic;
+		reset_timebase 	: out std_logic
+ 	);
+	end component controller;
+
+
+	component timebase is
+    port ( clk:in std_logic;
+            reset:in std_logic;
+            count_out:out std_logic_vector (19 downto 0) --1 miljoen bits 
+            );
+	end component timebase;
+
+	component motorcontrol is
+	port (	clk		: in	std_logic;
+		reset		: in	std_logic;
+		direction	: in	std_logic;
+		count_in	: in	std_logic_vector (19 downto 0);  -- Please enter upper bound
+
+		pwm		: out	std_logic
+	);
+	end component motorcontrol;
+
+begin
+
+lbl_ib: inputbuffer port map (
+		clk,
+		sensor_l_in,
+		sensor_m_in,
+		sensor_r_in,
+		ib_c_l,
+		ib_c_m,
+		ib_c_r 
+			);
+
+lbl_conr: controller port map(
+		clk,
+		reset,
+		ib_c_l,
+		ib_c_m,
+		ib_c_r,
+		c_tb,
+		c_mc_r,
+		c_mc_l,
+		reset_r,
+		reset_l,
+		reset_timebase
+		);
+
+lbl_timebase: timebase port map(
+		clk,
+		reset_timebase,
+		c_tb	
+		);
+
+
+lbl_motorl: motorcontrol port map(	
+		clk,
+		reset_l,
+		c_mc_l,
+		c_tb,
+		motor_l_pwm
+		);
+
+lbl_motorr: motorcontrol port map(	
+		clk,
+		reset_r,
+		c_mc_r,
+		c_tb,
+		motor_r_pwm
+		);
+end architecture final;
+		 
+
+-- inputbuffer begin
+library ieee;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+entity inputbuffer is
+    port(
+	clk                 :in std_logic;
+        sensor_l_in         :in std_logic;
+        sensor_m_in         :in std_logic; 
+        sensor_r_in         :in std_logic;
+
+        sensor_l_out        :out std_logic;
+        sensor_m_out        :out std_logic;
+        sensor_r_out        :out std_logic
+
+    );
+end entity inputbuffer;
+
+architecture signals of inputbuffer is
+	component register_3bit is
+		port(
+			clk: std_logic;
+			input_3bit: in std_logic_vector(2 downto 0);
+      			output_3bit: out std_logic_vector(2 downto 0)
+     		 );
+
+	end component;
+	
+	signal D, Q, S: std_logic_vector(2 downto 0);
+begin
+	D(0)<= sensor_l_in;
+	D(1)<= sensor_m_in;
+	D(2)<= sensor_r_in;
+
+	sensor_l_out <= Q(0);
+	sensor_m_out <= Q(1);
+	sensor_r_out <= Q(2);
+
+lable0: register_3bit port map(
+		clk,
+		D,
+		S
+				);
+
+lable1: register_3bit port map(
+		clk,
+		S,
+		Q
+				);
+	
+end architecture;
+
+
+library ieee;
+use ieee.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+entity register_3bit is 
+  port( 
+      clk: in std_logic;
+      input_3bit: in std_logic_vector(2 downto 0);
+      output_3bit: out std_logic_vector(2 downto 0):=(others=>'0')
+      );
+ end register_3bit;
+ 
+ 
+ 
+ architecture behavior of register_3bit is 
+begin
+	process(clk)
+	begin
+		if rising_edge(clk) then
+			output_3bit <= input_3bit;
+		end if;
+	end process;
+			
+end architecture;
+
+-- input buffer end
+
+--controller begin
+
+library IEEE;
+use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
+
+
+
+entity controller is 
+	port (  clk 		: in std_logic;
+		reset		: in std_logic;
+		sensor_l_out	: in std_logic;
+		sensor_m_out	: in std_logic;
+		sensor_r_out 	: in std_logic;
+		count_in	: in std_logic_vector (19 downto 0);
+		direction_r	: out std_logic;
+		direction_l 	: out std_logic;
+		reset_r 	: out std_logic;
+		reset_l		: out std_logic;
+		reset_timebase 	: out std_logic
+ 	);
+end controller;
+
+architecture behaviour_controller of controller is
+	
+	
+type moore_machine is (state_reset, state_FF, state_GL, state_SL, state_SR, state_GR);
+signal current_state: moore_machine:=state_reset;
+signal next_state: moore_machine:=state_reset;
+
+
+signal input_signal: std_logic_vector(2 downto 0);
+
+
+
+begin
+
+input_signal(0) <= sensor_l_out;
+input_signal(1) <= sensor_m_out;
+input_signal(2) <= sensor_r_out;
+
+process(count_in, reset)
+begin
+if (unsigned(count_in) = 0 AND reset = '0') then --and reset
+	reset_timebase <= '0';
+	case input_signal is
+			when "100" =>
+				next_state <= state_GL;
+				reset_r <= '0';
+				reset_l <= '1';
+				direction_r <= '0';
+			when "110" =>
+				next_state <= state_SL;
+				reset_r <= '0';
+				reset_l <= '0';
+				direction_l <= '0';
+				direction_r <= '0';
+			when "001" =>
+				next_state <= state_GR;
+				reset_r <= '1';
+				reset_l <= '0';
+				direction_l <= '1';
+			when "011" =>
+				next_state <= state_SR;
+				reset_r <= '0';
+				reset_l <= '0';
+				direction_l <= '1';
+				direction_r <= '1';
+			when others =>
+				next_state <= state_FF;
+				reset_r <= '0';
+				reset_l <= '0';
+				direction_l <= '1';
+				direction_r <= '0';
+	end case;
+end if;
+	if reset = '1' then --rising edge but also works at t=0ns for some reason
+            next_state <= state_reset;
+            reset_r <= '1';
+            reset_l <= '1';
+        elsif falling_edge(reset) OR unsigned(count_in) >= 1000000 then
+            reset_r <= '1';
+            reset_l <= '1';
+		reset_timebase <= '1';
+		
+	end if;
+end process;
+end architecture behaviour_controller;
+
+--controller end
+
+--timebase begin
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.all;
+use IEEE.numeric_std.all;
+
+		
+entity timebase is
+    port ( clk:in std_logic;
+            reset:in std_logic;
+            count_out:out std_logic_vector (19 downto 0) --1 miljoen bits 
+            );
+end entity timebase;
+
+architecture behavioural of timebase is
+      signal count, new_count : unsigned (19 downto 0);
+begin
+	 count_out <= std_logic_vector(count); 
+      process (clk)
+      begin
+              if (rising_edge (clk)) then
+                  if (reset = '1') then
+                        count <= (others => '0');
+                   else
+                        count <= new_count;
+                   end if;
+               end if;
+       end process;
+       
+       --calculating new count-value
+      process (count)
+       begin
+                  new_count <= count + 1;
+       end process;
+
+
+
+end architecture behavioural;
+
+--timebase end
+
+--motor cotrol begin
+library IEEE;
+use IEEE.STD_LOGIC_1164.all;
+use IEEE.numeric_std.all;
+
+
+entity motorcontrol is
+	port (	clk		: in	std_logic;
+		reset		: in	std_logic;
+		direction	: in	std_logic;
+		count_in	: in	std_logic_vector (19 downto 0);  -- Please enter upper bound
+
+		pwm		: out	std_logic :='1'
+	);
+end entity motorcontrol;
+
+architecture behaviour_motorcontrol of motorcontrol is
+	
+	
+type moore_machine is (state_reset, state_right, state_left);--diractional indicators have nothing to do with the direction of the wheels
+signal current_state: moore_machine:=state_reset;
+signal next_state: moore_machine:=state_reset;
+
+begin
+    process(clk,reset)
+        variable duration : unsigned(19 downto 0):= (others => '0');
+    begin
+        if falling_edge(reset) then
+	next_state <= state_right; --reset 1 to 0, so pwm = 1 and next state = state right 
+            pwm <= '1';
+        elsif reset = '1' then  --rising_edge but works at t=0ns
+            next_state <= state_reset;--reset 0 to 1, so turn the state pwm = 0 to reset
+            pwm <= '0';
+        end if;
+        if rising_edge(clk) then
+            current_state <= next_state;
+            if current_state = state_right then
+                if direction = '1' then--idk why this code is here, don't wanna move it, but it is less efficient but does allow the direction/pwm-pulse to change mid-pulse
+                    duration := "00011000011010100000";--1000000 cycles, 2ms
+                else
+                    duration := "00001100001101010000";--500000 cycles, 1ms
+                end if;
+
+                if to_integer(unsigned(count_in)) >= duration then
+                    pwm <= '0';
+                    next_state <= state_left;
+                end if;
+                    
+            end if;
+        end if;
+    end process;
+end architecture behaviour_motorcontrol;
+
+--end motorcontrol
